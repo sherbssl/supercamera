@@ -1,6 +1,6 @@
 {
-  "name": "Singapore Traffic Cameras",
-  "description": "Live Singapore LTA traffic camera feeds for Woodlands Checkpoint, Tuas Checkpoint, and major expressways with real-time search.",
+  "name": "SG Super Road Cam",
+  "description": "Singapore LTA live traffic cameras with multi-input geocoding, proximity search, interactive pan/zoom, and A/B usability testing comparison.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -41,6 +41,43 @@ export interface EnrichedCamera {
   imageMetadata?: CameraImageMetadata;
 }
 
-export type FilterCategory = 'all' | 'woodlands' | 'tuas' | 'pie' | 'bke' | 'cte' | 'aye';
+export type FilterCategory = 'all' | 'woodlands' | 'tuas' | 'pie' | 'bke' | 'cte' | 'aye' | 'changi';
 
 export type SortOption = 'name' | 'id' | 'timestamp';
+
+export interface CameraWithDistance extends EnrichedCamera {
+  distanceMeters?: number;
+  distanceText?: string;
+}
+
+export type LocationCategory = 'checkpoint' | 'expressway' | 'postal' | 'landmark' | 'road';
+
+export interface GeocodedLocation {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  postalCode?: string;
+  type: LocationCategory;
+  subtitle?: string;
+}
+
+export interface BookmarkItem {
+  id: string;
+  title: string;
+  query: string;
+  latitude: number;
+  longitude: number;
+  addedAt: string;
+  tag?: string;
+}
+
+export interface ToastNotification {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  message: string;
+  timestamp: number;
+}
+
+export type AppViewMode = 'v1' | 'v2';

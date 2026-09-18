@@ -9,8 +9,9 @@ import { SearchBar } from './components/SearchBar';
 import { CameraCard } from './components/CameraCard';
 import { ImageModal } from './components/ImageModal';
 import { EmptyState } from './components/EmptyState';
+import { V2View } from './components/v2/V2View';
 import { fetchTrafficCameras, FetchResult } from './services/trafficApi';
-import { EnrichedCamera, FilterCategory, SortOption } from './types';
+import { EnrichedCamera, FilterCategory, SortOption, AppViewMode } from './types';
 import {
   MapPin,
   RefreshCw,
@@ -20,27 +21,59 @@ import {
   AlertCircle,
   ExternalLink,
   Car,
+  FlaskConical,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 
 const REFRESH_INTERVAL_SECONDS = 60;
 
 export default function App() {
+  // A/B Testing View Mode ('v1' | 'v2')
+  const [viewMode, setViewMode] = useState<AppViewMode>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#v1') return 'v1';
+      if (hash === '#v2' || hash === '#test-v2') return 'v2';
+    }
+    return 'v2'; // Default to the newly improved v2 test variation
+  });
+
+  // Listen for hash changes for research links (e.g. #v1 or #v2)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#v1') setViewMode('v1');
+      if (hash === '#v2' || hash === '#test-v2') setViewMode('v2');
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const handleSelectViewMode = (mode: AppViewMode) => {
+    setViewMode(mode);
+    if (typeof window !== 'undefined') {
+      window.location.hash = mode;
+    }
+  };
+
   const [cameras, setCameras] = useState<EnrichedCamera[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [fetchSource, setFetchSource] = useState<'live-direct' | 'live-proxy' | 'fallback'>('live-proxy');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  // Search & Filter States
+  // Search & Filter States (v1)
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<FilterCategory>('all');
   const [sortBy, setSortBy] = useState<SortOption>('timestamp');
 
-  // Auto-refresh timer state
+  // Auto-refresh timer state (v1 only)
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
   const [countdown, setCountdown] = useState<number>(REFRESH_INTERVAL_SECONDS);
 
-  // Modal inspection
+  // Modal inspection (v1)
   const [selectedCamera, setSelectedCamera] = useState<EnrichedCamera | null>(null);
 
   // Load traffic cameras
@@ -70,9 +103,9 @@ export default function App() {
     loadCameras();
   }, [loadCameras]);
 
-  // Periodic auto-refresh countdown
+  // Periodic auto-refresh countdown (v1 only)
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || viewMode !== 'v1') return;
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -85,14 +118,13 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [autoRefresh, loadCameras]);
+  }, [autoRefresh, loadCameras, viewMode]);
 
-  // Filter and sort cameras
+  // Filter and sort cameras for v1
   const filteredCameras = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
     let list = cameras.filter((cam) => {
-      // If category is specific (and not just matching search text)
       if (activeCategory === 'woodlands' && !cam.id.startsWith('27') && !cam.name.toLowerCase().includes('woodlands')) {
         return false;
       }
@@ -112,7 +144,6 @@ export default function App() {
         return false;
       }
 
-      // If text query entered, search across name, road, area, id, and direction
       if (q) {
         const matchesName = cam.name.toLowerCase().includes(q);
         const matchesRoad = cam.road.toLowerCase().includes(q);
@@ -125,22 +156,14 @@ export default function App() {
       return true;
     });
 
-    // Sort list
     return list.sort((a, b) => {
-      if (sortBy === 'name') {
-        return a.name.localeCompare(b.name);
-      }
-      if (sortBy === 'id') {
-        return parseInt(a.id, 10) - parseInt(b.id, 10);
-      }
-      if (sortBy === 'timestamp') {
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      }
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'id') return parseInt(a.id, 10) - parseInt(b.id, 10);
+      if (sortBy === 'timestamp') return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       return 0;
     });
   }, [cameras, searchQuery, activeCategory, sortBy]);
 
-  // Checkpoint quick stats for woodlands and tuas
   const woodlandsCamerasCount = useMemo(() => {
     return cameras.filter(
       (c) => c.id.startsWith('27') || c.name.toLowerCase().includes('woodlands'),
@@ -154,203 +177,262 @@ export default function App() {
   }, [cameras]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
-      {/* Top Navigation Header */}
-      <Header
-        lastUpdated={lastUpdated}
-        isLoading={isLoading}
-        onRefresh={() => loadCameras(true)}
-        source={fetchSource}
-        autoRefresh={autoRefresh}
-        onToggleAutoRefresh={() => setAutoRefresh(!autoRefresh)}
-        countdown={countdown}
-      />
-
-      {/* Main Page Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Checkpoint Quick Focus Cards (Woodlands & Tuas) */}
-        <section aria-label="Checkpoint Focus" className="mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {/* Woodlands Causeway Focus Card */}
-            <div
-              id="woodlands-focus-card"
-              onClick={() => {
-                setActiveCategory('woodlands');
-                setSearchQuery('woodlands');
-              }}
-              className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                activeCategory === 'woodlands' || searchQuery.toLowerCase() === 'woodlands'
-                  ? 'bg-blue-50/80 border-blue-300 ring-2 ring-blue-500/20 shadow-xs'
-                  : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
-                  <Car className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm sm:text-base font-semibold text-slate-900">
-                      Woodlands Checkpoint
-                    </h2>
-                    <span className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded bg-blue-100 text-blue-800">
-                      Causeway
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Live camera views towards Johor Bahru &amp; BKE ({woodlandsCamerasCount} feeds)
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 text-xs font-medium text-blue-600 shrink-0">
-                <span className="hidden sm:inline">View Feeds</span>
-                <ArrowRight className="h-4 w-4" />
-              </div>
-            </div>
-
-            {/* Tuas Second Link Focus Card */}
-            <div
-              id="tuas-focus-card"
-              onClick={() => {
-                setActiveCategory('tuas');
-                setSearchQuery('tuas');
-              }}
-              className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                activeCategory === 'tuas' || searchQuery.toLowerCase() === 'tuas'
-                  ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs'
-                  : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                  <Compass className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm sm:text-base font-semibold text-slate-900">
-                      Tuas Checkpoint
-                    </h2>
-                    <span className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded bg-emerald-100 text-emerald-800">
-                      Second Link
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Live camera views at Sultan Abu Bakar &amp; AYE ({tuasCamerasCount} feeds)
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 text-xs font-medium text-emerald-600 shrink-0">
-                <span className="hidden sm:inline">View Feeds</span>
-                <ArrowRight className="h-4 w-4" />
-              </div>
-            </div>
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans antialiased text-slate-900">
+      {/* Top A/B Testing Usability Research Header Bar */}
+      <nav aria-label="Usability A/B Testing Switch" className="bg-slate-950 text-white border-b border-slate-800 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span className="text-xs font-bold tracking-wide uppercase text-slate-200">
+              Usability A/B Research Study:
+            </span>
+            <span className="text-xs text-slate-400 hidden md:inline">
+              Compare task success and workload across layouts
+            </span>
           </div>
-        </section>
 
-        {/* Search & Filter Component */}
-        <SearchBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          activeCategory={activeCategory}
-          onSelectCategory={setActiveCategory}
-          totalCount={cameras.length}
-          filteredCount={filteredCameras.length}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
-        />
-
-        {/* Notice banner if source is fallback/pre-connection */}
-        {errorNotice && (
-          <div className="mb-6 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm flex items-start gap-2.5">
-            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <span className="font-semibold">Demo / Preview Mode: </span>
-              <span>{errorNotice}</span>
-            </div>
+          {/* Dedicated Tab Toggle Controls */}
+          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-inner">
             <button
+              id="tab-v1-baseline"
               type="button"
-              onClick={() => loadCameras(true)}
-              className="text-xs font-semibold text-amber-800 hover:text-amber-950 underline shrink-0 cursor-pointer"
+              onClick={() => handleSelectViewMode('v1')}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                viewMode === 'v1'
+                  ? 'bg-slate-800 text-white shadow-xs border border-slate-700'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+              }`}
             >
-              Retry Live
+              <Layers className="h-3.5 w-3.5" />
+              <span>v1: Baseline (Auto-Poll &amp; Dense ID)</span>
+            </button>
+
+            <button
+              id="tab-v2-supercamera"
+              type="button"
+              onClick={() => handleSelectViewMode('v2')}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                viewMode === 'v2'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-blue-200" />
+              <span>v2: SG Super Road Cam (Expressway &amp; Minimalist)</span>
             </button>
           </div>
-        )}
-
-        {/* Camera Feeds Responsive Grid */}
-        {filteredCameras.length > 0 ? (
-          <div
-            id="camera-grid"
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"
-          >
-            {filteredCameras.map((camera) => (
-              <CameraCard
-                key={camera.id}
-                camera={camera}
-                onOpenModal={(cam) => setSelectedCamera(cam)}
-              />
-            ))}
-          </div>
-        ) : (
-          /* Empty Search State */
-          <EmptyState
-            searchQuery={searchQuery}
-            onClear={() => {
-              setSearchQuery('');
-              setActiveCategory('all');
-            }}
-            onSelectSuggestion={(s) => {
-              setSearchQuery(s);
-              setActiveCategory('all');
-            }}
-          />
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-          <div>
-            Data provided by{' '}
-            <a
-              href="https://data.gov.sg"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-slate-700 hover:underline"
-            >
-              data.gov.sg
-            </a>{' '}
-            &amp; Singapore Land Transport Authority (LTA).
-          </div>
-          <div className="flex items-center gap-3">
-            <span>Serverless APIs:</span>
-            <a
-              href="/api/trafficimages"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono transition-colors"
-            >
-              /api/trafficimages
-            </a>
-            <a
-              href="/api/health"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono transition-colors"
-            >
-              /api/health
-            </a>
-          </div>
         </div>
-      </footer>
+      </nav>
 
-      {/* High-Resolution Inspection Modal */}
-      <ImageModal
-        camera={selectedCamera}
-        onClose={() => setSelectedCamera(null)}
-      />
+      {/* Render View Mode */}
+      {viewMode === 'v2' ? (
+        /* Version 2: SG Super Road Cam (Usability Test Improved Variant) */
+        <V2View
+          initialCameras={cameras}
+          initialTimestamp={lastUpdated}
+        />
+      ) : (
+        /* Version 1: Baseline Architecture */
+        <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+          {/* Top Navigation Header */}
+          <Header
+            lastUpdated={lastUpdated}
+            isLoading={isLoading}
+            onRefresh={() => loadCameras(true)}
+            source={fetchSource}
+            autoRefresh={autoRefresh}
+            onToggleAutoRefresh={() => setAutoRefresh(!autoRefresh)}
+            countdown={countdown}
+          />
+
+          {/* Main Page Content */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            {/* Checkpoint Quick Focus Cards (Woodlands & Tuas) */}
+            <section aria-label="Checkpoint Focus" className="mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* Woodlands Causeway Focus Card */}
+                <div
+                  id="woodlands-focus-card"
+                  onClick={() => {
+                    setActiveCategory('woodlands');
+                    setSearchQuery('woodlands');
+                  }}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                    activeCategory === 'woodlands' || searchQuery.toLowerCase() === 'woodlands'
+                      ? 'bg-blue-50/80 border-blue-300 ring-2 ring-blue-500/20 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                      <Car className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm sm:text-base font-semibold text-slate-900">
+                          Woodlands Checkpoint
+                        </h2>
+                        <span className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded bg-blue-100 text-blue-800">
+                          Causeway
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Live camera views towards Johor Bahru &amp; BKE ({woodlandsCamerasCount} feeds)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-xs font-medium text-blue-600 shrink-0">
+                    <span className="hidden sm:inline">View Feeds</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                </div>
+
+                {/* Tuas Second Link Focus Card */}
+                <div
+                  id="tuas-focus-card"
+                  onClick={() => {
+                    setActiveCategory('tuas');
+                    setSearchQuery('tuas');
+                  }}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                    activeCategory === 'tuas' || searchQuery.toLowerCase() === 'tuas'
+                      ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                      <Compass className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm sm:text-base font-semibold text-slate-900">
+                          Tuas Checkpoint
+                        </h2>
+                        <span className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded bg-emerald-100 text-emerald-800">
+                          Second Link
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Live camera views at Sultan Abu Bakar &amp; AYE ({tuasCamerasCount} feeds)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-xs font-medium text-emerald-600 shrink-0">
+                    <span className="hidden sm:inline">View Feeds</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Search & Filter Component */}
+            <SearchBar
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              activeCategory={activeCategory}
+              onSelectCategory={setActiveCategory}
+              totalCount={cameras.length}
+              filteredCount={filteredCameras.length}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+            />
+
+            {/* Notice banner if source is fallback/pre-connection */}
+            {errorNotice && (
+              <div className="mb-6 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="font-semibold">Demo / Preview Mode: </span>
+                  <span>{errorNotice}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadCameras(true)}
+                  className="text-xs font-semibold text-amber-800 hover:text-amber-950 underline shrink-0 cursor-pointer"
+                >
+                  Retry Live
+                </button>
+              </div>
+            )}
+
+            {/* Camera Feeds Responsive Grid */}
+            {filteredCameras.length > 0 ? (
+              <div
+                id="camera-grid"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"
+              >
+                {filteredCameras.map((camera) => (
+                  <CameraCard
+                    key={camera.id}
+                    camera={camera}
+                    onOpenModal={(cam) => setSelectedCamera(cam)}
+                  />
+                ))}
+              </div>
+            ) : (
+              /* Empty Search State */
+              <EmptyState
+                searchQuery={searchQuery}
+                onClear={() => {
+                  setSearchQuery('');
+                  setActiveCategory('all');
+                }}
+                onSelectSuggestion={(s) => {
+                  setSearchQuery(s);
+                  setActiveCategory('all');
+                }}
+              />
+            )}
+          </main>
+
+          {/* Footer */}
+          <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+              <div>
+                Data provided by{' '}
+                <a
+                  href="https://data.gov.sg"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-slate-700 hover:underline"
+                >
+                  data.gov.sg
+                </a>{' '}
+                &amp; Singapore Land Transport Authority (LTA).
+              </div>
+              <div className="flex items-center gap-3">
+                <span>Serverless APIs:</span>
+                <a
+                  href="/api/trafficimages"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono transition-colors"
+                >
+                  /api/trafficimages
+                </a>
+                <a
+                  href="/api/health"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono transition-colors"
+                >
+                  /api/health
+                </a>
+              </div>
+            </div>
+          </footer>
+
+          {/* High-Resolution Inspection Modal */}
+          <ImageModal
+            camera={selectedCamera}
+            onClose={() => setSelectedCamera(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }
+
