@@ -1,5 +1,15 @@
 import React from 'react';
-import { Bookmark, MapPin, Trash2, ArrowUpRight, Plus, Sparkles, Navigation } from 'lucide-react';
+import {
+  Bookmark,
+  MapPin,
+  Trash2,
+  ArrowUpRight,
+  Plus,
+  Sparkles,
+  Navigation,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { BookmarkItem } from '../../types';
 
 interface V2BookmarksPanelProps {
@@ -8,6 +18,8 @@ interface V2BookmarksPanelProps {
   onRemoveBookmark: (id: string) => void;
   onFocusSearch: () => void;
   onQuickAddDefault?: (title: string, query: string, lat: number, lng: number) => void;
+  isMinimized?: boolean;
+  onToggleMinimize?: () => void;
 }
 
 export const V2BookmarksPanel: React.FC<V2BookmarksPanelProps> = ({
@@ -16,7 +28,68 @@ export const V2BookmarksPanel: React.FC<V2BookmarksPanelProps> = ({
   onRemoveBookmark,
   onFocusSearch,
   onQuickAddDefault,
+  isMinimized = false,
+  onToggleMinimize,
 }) => {
+  // Minimized Compact Strip View (When user queries a search)
+  if (isMinimized) {
+    return (
+      <section
+        aria-label="Saved Locations Minimized"
+        className="w-full bg-white rounded-xl border border-slate-200 px-3.5 py-2.5 shadow-2xs transition-all flex flex-wrap items-center justify-between gap-2.5 text-xs"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="p-1 rounded-md bg-amber-50 text-amber-600 border border-amber-200 shrink-0">
+            <Bookmark className="h-3.5 w-3.5 fill-amber-500" />
+          </div>
+          <span className="font-bold text-slate-800 shrink-0">
+            Saved Locations ({bookmarks.length})
+          </span>
+
+          {/* Quick Clickable Chips in Minimized Mode */}
+          {bookmarks.length > 0 ? (
+            <div className="hidden sm:flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-xl">
+              {bookmarks.slice(0, 3).map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => onSelectBookmark(b)}
+                  title={`View ${b.title}`}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 font-medium text-[11px] truncate max-w-[170px] transition-colors cursor-pointer shrink-0"
+                >
+                  {b.title}
+                </button>
+              ))}
+              {bookmarks.length > 3 && (
+                <span className="text-[11px] text-slate-400 font-medium shrink-0">
+                  +{bookmarks.length - 3} more
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-400 hidden sm:inline">
+              Bookmark cameras for 1-click access
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {onToggleMinimize && (
+            <button
+              type="button"
+              onClick={onToggleMinimize}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition-colors cursor-pointer"
+            >
+              <span>Expand</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  // Full Expanded View (When search is empty or user manually expands)
   return (
     <section aria-labelledby="saved-locations-heading" className="w-full">
       <div className="flex items-center justify-between mb-3.5">
@@ -32,16 +105,30 @@ export const V2BookmarksPanel: React.FC<V2BookmarksPanelProps> = ({
           </span>
         </div>
 
-        {bookmarks.length > 0 && (
-          <button
-            type="button"
-            onClick={onFocusSearch}
-            className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Add New</span>
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {bookmarks.length > 0 && (
+            <button
+              type="button"
+              onClick={onFocusSearch}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Add New</span>
+            </button>
+          )}
+
+          {onToggleMinimize && (
+            <button
+              type="button"
+              onClick={onToggleMinimize}
+              title="Minimize saved locations"
+              className="text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              <span>Minimize</span>
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Actionable Empty State */}

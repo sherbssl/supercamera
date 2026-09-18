@@ -1,5 +1,15 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { Clock, MapPin, ZoomIn, ZoomOut, RotateCcw, Bookmark, AlertCircle } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  Clock,
+  MapPin,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Bookmark,
+  AlertCircle,
+  Maximize2,
+  ExternalLink,
+} from 'lucide-react';
 import { CameraWithDistance } from '../../types';
 import { formatSingaporeDateTime, formatRelativeTime } from '../../utils/dateFormatter';
 
@@ -23,7 +33,14 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [panPosition, setPanPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const dragStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number }>({
+  const hasDraggedRef = useRef<boolean>(false);
+
+  const dragStartRef = useRef<{
+    startX: number;
+    startY: number;
+    initialPanX: number;
+    initialPanY: number;
+  }>({
     startX: 0,
     startY: 0,
     initialPanX: 0,
@@ -52,19 +69,28 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
     });
   }, []);
 
-  // Wheel event for Ctrl + Scroll zoom
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.3 : -0.3;
-      setZoomLevel((prev) => {
-        const next = Math.min(Math.max(prev + delta, 1), 4);
-        if (next === 1) {
-          setPanPosition({ x: 0, y: 0 });
-        }
-        return parseFloat(next.toFixed(2));
-      });
-    }
+  // Wheel event for Ctrl + Scroll zoom with passive: false to prevent browser zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = e.deltaY < 0 ? 0.25 : -0.25;
+        setZoomLevel((prev) => {
+          const next = Math.min(Math.max(prev + delta, 1), 4);
+          if (next === 1) {
+            setPanPosition({ x: 0, y: 0 });
+          }
+          return parseFloat(next.toFixed(2));
+        });
+      }
+    };
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
   }, []);
 
   // Mouse Drag handlers for panning
@@ -72,6 +98,7 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (zoomLevel <= 1) return;
       setIsDragging(true);
+      hasDraggedRef.current = false;
       dragStartRef.current = {
         startX: e.clientX,
         startY: e.clientY,
@@ -88,6 +115,10 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
       const dx = e.clientX - dragStartRef.current.startX;
       const dy = e.clientY - dragStartRef.current.startY;
 
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasDraggedRef.current = true;
+      }
+
       // Bound panning based on zoom level
       const maxPan = (zoomLevel - 1) * 180;
       const newX = Math.max(Math.min(dragStartRef.current.initialPanX + dx, maxPan), -maxPan);
@@ -102,23 +133,37 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
     setIsDragging(false);
   }, []);
 
+  // Card click triggers opening the Inspection Window (unless user was dragging or clicking controls)
+  const handleCardClick = () => {
+    if (hasDraggedRef.current) {
+      hasDraggedRef.current = false;
+      return;
+    }
+    if (onOpenFullView) {
+      onOpenFullView(camera);
+    }
+  };
+
   // Relative & absolute time formatting
   const relativeTime = formatRelativeTime(camera.timestamp);
   const formattedTime = formatSingaporeDateTime(camera.timestamp);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition-shadow flex flex-col overflow-hidden">
+    <div
+      onClick={handleCardClick}
+      title="Click to open camera in inspection window"
+      className="group bg-white rounded-xl border border-slate-200 hover:border-blue-400 shadow-xs hover:shadow-lg transition-all flex flex-col overflow-hidden cursor-pointer relative"
+    >
       {/* Interactive Media Container with Zoom & Pan */}
       <div
         ref={containerRef}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUpOrLeave}
         onMouseLeave={handleMouseUpOrLeave}
         onDoubleClick={resetZoom}
         className={`relative aspect-video w-full bg-slate-950 select-none overflow-hidden ${
-          zoomLevel > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
+          zoomLevel > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
         }`}
       >
         {/* Loading Skeleton */}
@@ -139,7 +184,9 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
           <div
             className="w-full h-full flex items-center justify-center transition-transform duration-75"
             style={{
-              transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+              transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${
+                panPosition.y / zoomLevel
+              }px)`,
               transformOrigin: 'center center',
             }}
           >
@@ -158,7 +205,10 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
         )}
 
         {/* Floating Zoom & Pan Controls Overlay */}
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-xs border border-white/10 rounded-lg p-1 text-white shadow-md z-10">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-3 right-3 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-xs border border-white/10 rounded-lg p-1 text-white shadow-md z-10"
+        >
           <button
             type="button"
             onClick={handleZoomIn}
@@ -188,6 +238,26 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
               <span className="text-[10px] font-mono font-bold">{Math.round(zoomLevel * 100)}%</span>
             </button>
           )}
+          {/* Quick Expand Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenFullView?.(camera);
+            }}
+            title="Open in inspection window"
+            className="p-1.5 hover:bg-white/20 rounded text-blue-300 transition-colors cursor-pointer"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Hover Cue Banner */}
+        <div className="absolute inset-0 bg-blue-950/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
+          <span className="px-3 py-1.5 rounded-xl bg-slate-950/80 backdrop-blur-md text-white text-xs font-semibold flex items-center gap-1.5 shadow-md">
+            <Maximize2 className="h-3.5 w-3.5 text-blue-400" />
+            <span>Click card to open window</span>
+          </span>
         </div>
 
         {/* Zoom & Pan Hint Badge */}
@@ -197,8 +267,8 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
               Magnified {zoomLevel.toFixed(1)}x • Drag to pan
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/70 backdrop-blur-xs text-slate-300 text-[10px] font-medium opacity-70 hover:opacity-100 transition-opacity">
-              Hold Ctrl + Scroll to zoom
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/70 backdrop-blur-xs text-slate-300 text-[10px] font-medium opacity-70 group-hover:opacity-100 transition-opacity">
+              Click to open window • Ctrl + Scroll
             </span>
           )}
         </div>
@@ -222,11 +292,10 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
       </div>
 
       {/* Minimalist Information Hierarchy */}
-      {/* STRICT EXCLUSION: NO raw Camera IDs, NO database strings */}
       <div className="p-4 sm:p-5 flex flex-col justify-between flex-1">
         <div>
           {/* Location / Road Name Description */}
-          <h3 className="text-base font-bold text-slate-900 leading-snug line-clamp-2 mb-2">
+          <h3 className="text-base font-bold text-slate-900 leading-snug line-clamp-2 mb-2 group-hover:text-blue-600 transition-colors">
             {camera.name}
           </h3>
 
@@ -246,7 +315,7 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
           </div>
         </div>
 
-        {/* Timestamp */}
+        {/* Timestamp & Actions */}
         <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
@@ -258,19 +327,23 @@ export const V2CameraCard: React.FC<V2CameraCardProps> = ({
               href={`https://www.google.com/maps?q=${camera.latitude},${camera.longitude}`}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="text-blue-600 hover:text-blue-800 font-medium hover:underline inline-flex items-center gap-0.5"
             >
               Directions
             </a>
-            {onOpenFullView && (
-              <button
-                type="button"
-                onClick={() => onOpenFullView(camera)}
-                className="text-slate-600 hover:text-slate-900 font-medium cursor-pointer"
-              >
-                Expand
-              </button>
-            )}
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFullView?.(camera);
+              }}
+              className="text-blue-600 hover:text-blue-800 font-semibold cursor-pointer inline-flex items-center gap-1"
+            >
+              <Maximize2 className="h-3 w-3" />
+              <span>Open Window</span>
+            </button>
           </div>
         </div>
       </div>

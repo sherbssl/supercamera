@@ -14,6 +14,7 @@ import { V2Header } from './V2Header';
 import { V2SearchBar } from './V2SearchBar';
 import { V2CameraCard } from './V2CameraCard';
 import { V2BookmarksPanel } from './V2BookmarksPanel';
+import { V2CameraModal } from './V2CameraModal';
 import {
   EnrichedCamera,
   CameraWithDistance,
@@ -44,6 +45,32 @@ export const V2View: React.FC<V2ViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<FilterCategory>('all');
   const [sortBy, setSortBy] = useState<SortOption>('name');
+
+  // Inspection Window Modal state for clicked camera card
+  const [selectedCamera, setSelectedCamera] = useState<CameraWithDistance | null>(null);
+
+  // Manual override for bookmarks minimized state (auto-minimizes when searching)
+  const [bookmarksMinimizedOverride, setBookmarksMinimizedOverride] = useState<boolean | null>(null);
+
+  // Automatically minimize saved locations when user queries a search or selects a filter
+  const isSearching = searchQuery.trim().length > 0 || activeCategory !== 'all';
+  const isBookmarksMinimized =
+    bookmarksMinimizedOverride !== null ? bookmarksMinimizedOverride : isSearching;
+
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query);
+    // Reset manual override so typing a new query minimizes saved locations immediately
+    setBookmarksMinimizedOverride(null);
+  }, []);
+
+  const handleCategoryChange = useCallback((category: FilterCategory) => {
+    setActiveCategory(category);
+    setBookmarksMinimizedOverride(null);
+  }, []);
+
+  const handleToggleBookmarksMinimized = useCallback(() => {
+    setBookmarksMinimizedOverride((prev) => (prev !== null ? !prev : !isSearching));
+  }, [isSearching]);
 
   // Bookmarks state (localStorage persistence)
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>(() => {
@@ -278,6 +305,7 @@ export const V2View: React.FC<V2ViewProps> = ({
     (b: BookmarkItem) => {
       setSearchQuery(b.title);
       setActiveCategory('all');
+      setBookmarksMinimizedOverride(null);
       showToast('info', `Displaying feed for "${b.title}"`);
     },
     [showToast],
@@ -446,9 +474,9 @@ export const V2View: React.FC<V2ViewProps> = ({
 
           <V2SearchBar
             searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            onSearchChange={handleSearchChange}
             activeCategory={activeCategory}
-            onCategoryChange={setActiveCategory}
+            onCategoryChange={handleCategoryChange}
             totalCount={allCameras.length}
             filteredCount={filteredCameras.length}
             sortBy={sortBy}
@@ -456,13 +484,15 @@ export const V2View: React.FC<V2ViewProps> = ({
           />
         </section>
 
-        {/* Bookmarks & Saved Locations Panel */}
+        {/* Bookmarks & Saved Locations Panel (Auto-minimized when searching) */}
         <V2BookmarksPanel
           bookmarks={bookmarks}
           onSelectBookmark={handleSelectBookmark}
           onRemoveBookmark={handleRemoveBookmark}
           onFocusSearch={handleFocusSearch}
           onQuickAddDefault={handleQuickAddDefault}
+          isMinimized={isBookmarksMinimized}
+          onToggleMinimize={handleToggleBookmarksMinimized}
         />
 
         {/* Camera Feeds Section (2x2 Grid with Interactive Pan/Zoom) */}
@@ -543,11 +573,22 @@ export const V2View: React.FC<V2ViewProps> = ({
                   camera={camera}
                   isBookmarked={isCameraBookmarked(camera)}
                   onToggleBookmark={toggleBookmark}
+                  onOpenFullView={(cam) => setSelectedCamera(cam)}
                 />
               ))}
             </div>
           )}
         </section>
+
+        {/* Interactive Camera Inspection Window Modal with Drag/Pan & Ctrl+Scroll Zoom */}
+        {selectedCamera && (
+          <V2CameraModal
+            camera={selectedCamera}
+            onClose={() => setSelectedCamera(null)}
+            isBookmarked={isCameraBookmarked(selectedCamera)}
+            onToggleBookmark={toggleBookmark}
+          />
+        )}
       </main>
 
       {/* Clean Footer */}
