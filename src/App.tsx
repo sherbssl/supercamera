@@ -325,10 +325,23 @@ export default function App() {
             &amp; Singapore Land Transport Authority (LTA).
           </div>
           <div className="flex items-center gap-3">
-            <span>Official endpoint:</span>
-            <code className="text-[11px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-mono">
-              /v1/transport/traffic-images
-            </code>
+            <span>Serverless APIs:</span>
+            <a
+              href="/api/trafficimages"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono transition-colors"
+            >
+              /api/trafficimages
+            </a>
+            <a
+              href="/api/health"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono transition-colors"
+            >
+              /api/health
+            </a>
           </div>
         </div>
       </footer>

@@ -8,8 +8,8 @@ export interface FetchResult {
   error?: string;
 }
 
+const SERVERLESS_API_URL = '/api/trafficimages';
 const DIRECT_API_URL = 'https://api.data.gov.sg/v1/transport/traffic-images';
-const PROXY_API_URL = '/api/traffic-images';
 
 function mapRawCameras(rawCameras: RawCameraItem[]): EnrichedCamera[] {
   return rawCameras.map((raw) => {
@@ -56,7 +56,33 @@ function mergeWithExpresswayCatalog(liveCameras: EnrichedCamera[]): EnrichedCame
 }
 
 export async function fetchTrafficCameras(): Promise<FetchResult> {
-  // Strategy 1: Attempt direct official API endpoint as requested
+  // Strategy 1: Call serverless endpoint /api/trafficimages (serverless backend proxy)
+  try {
+    const res = await fetch(SERVERLESS_API_URL, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (res.ok) {
+      const data: RawApiResponse = await res.json();
+      if (data.items && data.items.length > 0) {
+        const rawCams = data.items[0].cameras || [];
+        const enriched = mapRawCameras(rawCams);
+        const fullList = mergeWithExpresswayCatalog(enriched);
+        return {
+          cameras: fullList,
+          timestamp: data.items[0].timestamp || new Date().toISOString(),
+          source: 'live-proxy',
+        };
+      }
+    }
+  } catch (proxyErr) {
+    console.warn('Serverless endpoint /api/trafficimages failed, attempting direct fetch:', proxyErr);
+  }
+
+  // Strategy 2: Attempt direct official API endpoint as fallback
   try {
     const res = await fetch(DIRECT_API_URL, {
       method: 'GET',
@@ -79,33 +105,7 @@ export async function fetchTrafficCameras(): Promise<FetchResult> {
       }
     }
   } catch (directErr) {
-    console.warn('Direct fetch from api.data.gov.sg failed (likely CORS), attempting proxy:', directErr);
-  }
-
-  // Strategy 2: Attempt local proxy route (/api/traffic-images)
-  try {
-    const res = await fetch(PROXY_API_URL, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-
-    if (res.ok) {
-      const data: RawApiResponse = await res.json();
-      if (data.items && data.items.length > 0) {
-        const rawCams = data.items[0].cameras || [];
-        const enriched = mapRawCameras(rawCams);
-        const fullList = mergeWithExpresswayCatalog(enriched);
-        return {
-          cameras: fullList,
-          timestamp: data.items[0].timestamp || new Date().toISOString(),
-          source: 'live-proxy',
-        };
-      }
-    }
-  } catch (proxyErr) {
-    console.warn('Proxy fetch failed:', proxyErr);
+    console.warn('Direct fetch from api.data.gov.sg failed:', directErr);
   }
 
   // Strategy 3: Graceful fallback with verified Singapore LTA camera snapshots
